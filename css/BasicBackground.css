@@ -1,7 +1,7 @@
-@import url(https://vsthemes.org/uploads/generator/client/ThemeDevBadge.css);
-@import url(https://vsthemes.org/uploads/generator/client/SettingsIcons.css);
-@import url(https://vsthemes.org/uploads/generator/client/BlurpleRecolor.css);
-@import url(https://vsthemes.org/uploads/generator/client/usrbg.css);
+@import url(https://so1ta.github.io/css/ThemeDevBadge.css);
+@import url(https://so1ta.github.io/css/SettingsIcons.css);
+@import url(https://so1ta.github.io/css/BlurpleRecolor.css);
+@import url(https://so1ta.github.io/css/usrbg.css);
 
 :root {
   --dtransparencycolor:     0,0,0;
