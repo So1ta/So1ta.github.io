@@ -1,0 +1,1589 @@
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+using System.Collections.Generic;
+using System.Drawing;
+using Microsoft.VisualBasic.ApplicationServices;
+using System.Globalization; // Добавьте эту строку
+using job.Properties;
+using System.Net;
+using System.Net.Mail;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
+using MimeKit.Text;
+
+
+namespace job
+{
+    public partial class ZayavkaForm : Form
+    {
+        private string connectionString;
+        private int? selectedZayavkaId = null;
+        private List<byte[]> selectedFilesBytes = new List<byte[]>();
+        private List<string> selectedFilesNames = new List<string>();
+        private int currentUserId;
+        private DataTable originalObjectsTable = new DataTable(); // Сохраняем исходные данные об объектах
+        private List<System.Windows.Forms.Timer> timers = new List<System.Windows.Forms.Timer>();
+        private EmailService _emailService;
+        private TaskForm _taskForm;
+
+        public ZayavkaForm(string connectionString, TaskForm taskForm, int currentUserId = 0, int? zayavkaId = null)
+        {
+            InitializeComponent();
+
+            _emailService = new EmailService(); // Создаем экземпляр EmailService
+            _taskForm = taskForm;
+
+            this.connectionString = connectionString;
+            this.selectedZayavkaId = zayavkaId;
+            this.currentUserId = currentUserId;
+            LoadEmployees();
+            LoadObjects();
+            LoadOtdels(); // Загружаем отделы
+            CheckAndCreateRecurringZayavkiOnStartup();
+            CheckUserRole();
+            ClearInputFields();
+
+            urgencyComboBox.Items.Add("Низкий");
+            urgencyComboBox.Items.Add("Средний");
+            urgencyComboBox.Items.Add("Высокий");
+            urgencyComboBox.Items.Add("Срочно");
+
+            statusComboBox.Items.Add("Открыта");
+            statusComboBox.Items.Add("В работе");
+            statusComboBox.Items.Add("Выполнена");
+            statusComboBox.Items.Add("Отклонена");
+
+            if (selectedZayavkaId.HasValue)
+            {
+                LoadZayavkaDetails(selectedZayavkaId.Value);
+            }
+            else
+            {
+                statusComboBox.SelectedItem = "Открыта";
+            }
+
+            // Настройка ComboBox для объектов
+            objectComboBox.DropDownStyle = ComboBoxStyle.DropDown;
+            objectComboBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+            objectComboBox.AutoCompleteSource = AutoCompleteSource.ListItems;
+            objectComboBox.KeyDown += ObjectComboBox_KeyDown; // Подписываемся на событие KeyDown
+
+            // Устанавливаем текст подсказки, заголовок и значок для ComboBox
+            toolTip1.SetToolTip(objectComboBox, "Выберите объект из списка или начните вводить его название и нажмите Enter.");
+            toolTip1.ToolTipTitle = "Подсказка";
+            toolTip1.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip2.SetToolTip(themeTextBox, "Введите тему заявки.");
+            toolTip2.ToolTipTitle = "Подсказка";
+            toolTip2.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip4.SetToolTip(otdelComboBox, "Выберите отдел из списка.");
+            toolTip4.ToolTipTitle = "Подсказка";
+            toolTip4.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip5.SetToolTip(urgencyComboBox, "Выберите срочность заявки из списка.");
+            toolTip5.ToolTipTitle = "Подсказка";
+            toolTip5.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip6.SetToolTip(btnDates, "Выбрать даты.");
+            toolTip6.ToolTipTitle = "Подсказка";
+            toolTip6.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip7.SetToolTip(btnHelp, "Нажмите чтобы увидеть помощь.");
+            toolTip7.ToolTipTitle = "Подсказка";
+            toolTip7.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip8.SetToolTip(btnObjectAdd, "Нажмите чтобы добавить новый объект на карту.");
+            toolTip8.ToolTipTitle = "Подсказка";
+            toolTip8.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip9.SetToolTip(checkedListBoxDates1, "Отображает (срок выполнения заявки)выбранные даты для заявки.");
+            toolTip9.ToolTipTitle = "Подсказка";
+            toolTip9.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip10.SetToolTip(btnSelectFile, "При нажатии откроется проводник и можно будет выбрать один или несколько файлов для загрузки к заявке.");
+            toolTip10.ToolTipTitle = "Подсказка";
+            toolTip10.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip11.SetToolTip(commentTextBox, "Введите комментарий к заявке, конкретизируйте, что нужно сделать.");
+            toolTip11.ToolTipTitle = "Подсказка";
+            toolTip11.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip12.SetToolTip(btnAddZayavka, "Нажмите, чтобы создать заявку.");
+            toolTip12.ToolTipTitle = "Подсказка";
+            toolTip12.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip13.SetToolTip(checkBoxSensor, "При выборе этой функции будет отправлено письмо пользователю на его почту Сенсор. (если она у него есть)");
+            toolTip13.ToolTipTitle = "Подсказка";
+            toolTip13.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip14.SetToolTip(checkBoxMPM, "При выборе этой функции будет отправлено письмо пользователю на его почту МПМ. (если она у него есть)");
+            toolTip14.ToolTipTitle = "Подсказка";
+            toolTip14.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip15.SetToolTip(checkBoxSensor01, "При выборе этой функции будет отправлено письмо на почту sensor.01@yandex.ru");
+            toolTip15.ToolTipTitle = "Подсказка";
+            toolTip15.ToolTipIcon = ToolTipIcon.Info;
+
+            toolTip16.SetToolTip(checkBoxMpm01, "При выборе этой функции будет отправлено письмо на почту mpm.mpm.01@yandex.ru");
+            toolTip16.ToolTipTitle = "Подсказка";
+            toolTip16.ToolTipIcon = ToolTipIcon.Info;
+        }
+
+        private void CheckUserRole()
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = @"
+          SELECT r.RoleName
+          FROM Users u
+          INNER JOIN Roles r ON u.RoleID = r.RoleID
+          WHERE u.UserID = @UserID";
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserID", currentUserId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                string roleName = reader["RoleName"].ToString();
+
+                                if (roleName == "Администратор")
+                                {
+                                    recurrenceIntervalLabel.Visible = true;
+                                    recurrenceIntervalTextBox.Visible = true;
+                                    recurringCheckBox.Visible = true;
+                                }
+                                else if (roleName == "Инженер")
+                                {
+                                    recurrenceIntervalLabel.Visible = true;
+                                    recurrenceIntervalTextBox.Visible = true;
+                                    recurringCheckBox.Visible = true;
+                                }
+                                else if (roleName == "Главный инженер")
+                                {
+                                    recurrenceIntervalLabel.Visible = true;
+                                    recurrenceIntervalTextBox.Visible = true;
+                                    recurringCheckBox.Visible = true;
+                                }
+                                else
+                                {
+                                    recurrenceIntervalLabel.Visible = false;
+                                    recurrenceIntervalTextBox.Visible = false;
+                                    recurringCheckBox.Visible = false;
+                                }
+                            }
+                            // Если роль не найдена, скрываем кнопки
+                            else
+                            {
+                                recurrenceIntervalLabel.Visible = false;
+                                recurrenceIntervalTextBox.Visible = false;
+                                recurringCheckBox.Visible = false;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при проверке роли пользователя: " + ex.Message);
+                recurrenceIntervalLabel.Visible = false;
+                recurrenceIntervalTextBox.Visible = false;
+                recurringCheckBox.Visible = false;
+            }
+        }
+
+        private void LoadZayavkaDetails(int zayavkaId)
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = @"
+                SELECT
+                    z.Theme AS Subject,
+                    e.FullName AS Client,
+                    o.ObjectName AS Object,
+                    o.ObjectAdress AS ObjectAdress,  -- Добавлено
+                    z.Comment AS Comment,
+                    z.Status,
+                    z.Urgency AS Urgency,
+                    z.StartDate AS StartDate,
+                    z.EndDate AS EndDate,
+                    z.UserID,
+                    z.ObjectID,
+                    z.CreatedByUserID,
+                    z.OtdelID,
+                    z.Dates
+                FROM
+                    Zayavki z
+                JOIN
+                    Employees e ON z.UserID = e.UserID
+                JOIN
+                    Objects o ON z.ObjectID = o.ObjectID
+                WHERE z.ZayavkiID = @ZayavkiID";
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                themeTextBox.Text = reader["Subject"].ToString();
+                                employeesComboBox.SelectedValue = reader["UserID"];
+                                objectComboBox.SelectedValue = reader["ObjectID"];
+                                commentTextBox.Text = reader["Comment"].ToString();
+                                statusComboBox.SelectedItem = reader["Status"].ToString();
+                                urgencyComboBox.SelectedItem = reader["Urgency"].ToString();
+                                checkedListBoxDates1.Items.Clear();
+                                string selectedDatesString = reader["Dates"].ToString();
+                                if (!string.IsNullOrEmpty(selectedDatesString))
+                                {
+                                    string[] dateStrings = selectedDatesString.Split(',');
+                                    foreach (string dateString in dateStrings)
+                                    {
+                                        if (DateTime.TryParseExact(dateString, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date))
+                                        {
+                                            int index = checkedListBoxDates1.Items.Add(date);
+                                            checkedListBoxDates1.SetItemChecked(index, true); // Отмечаем загруженные даты
+                                        }
+                                    }
+                                }
+
+                                if (reader["OtdelID"] != DBNull.Value)
+                                {
+                                    otdelComboBox.SelectedValue = reader["OtdelID"];
+                                }
+                            }
+                        }
+                    }
+                    string fileQuery = @"
+                SELECT
+                    FileData,
+                    FileName
+                FROM
+                    ZayavkaFiles
+                WHERE ZayavkiID = @ZayavkiID";
+                    using (SqlCommand fileCommand = new SqlCommand(fileQuery, connection))
+                    {
+                        fileCommand.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                        using (SqlDataReader fileReader = fileCommand.ExecuteReader())
+                        {
+                            selectedFilesBytes.Clear();
+                            selectedFilesNames.Clear();
+                            while (fileReader.Read())
+                            {
+                                byte[] fileData = fileReader["FileData"] as byte[];
+                                string fileName = fileReader["FileName"] as string;
+                                if (fileData != null && !string.IsNullOrEmpty(fileName))
+                                {
+                                    selectedFilesBytes.Add(fileData);
+                                    selectedFilesNames.Add(fileName);
+                                }
+                            }
+                            fileTextBox.Text = string.Join(", ", selectedFilesNames);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при загрузке данных заявки: " + ex.Message);
+            }
+        }
+
+        private void ZayavkaForm_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void LoadEmployees()
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT UserID, FullName FROM Users";
+                    using (SqlDataAdapter adapter = new SqlDataAdapter(query, connection))
+                    {
+                        DataTable dataTable = new DataTable();
+                        adapter.Fill(dataTable);
+                        employeesComboBox.DataSource = dataTable;
+                        employeesComboBox.DisplayMember = "FullName";
+                        employeesComboBox.ValueMember = "UserID";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при загрузке сотрудников: " + ex.Message);
+            }
+        }
+
+        private void LoadOtdels()
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT OtdelID, OtdelName FROM Otdel";
+                    using (SqlDataAdapter adapter = new SqlDataAdapter(query, connection))
+                    {
+                        DataTable dataTable = new DataTable();
+                        adapter.Fill(dataTable);
+                        otdelComboBox.DataSource = dataTable;
+                        otdelComboBox.DisplayMember = "OtdelName";
+                        otdelComboBox.ValueMember = "OtdelID";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при загрузке отделов: " + ex.Message);
+            }
+        }
+
+        private void LoadObjects()
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT ObjectID, ObjectName FROM Objects";
+                    using (SqlDataAdapter adapter = new SqlDataAdapter(query, connection))
+                    {
+                        originalObjectsTable = new DataTable();
+                        adapter.Fill(originalObjectsTable);
+                        objectComboBox.DataSource = originalObjectsTable;
+                        objectComboBox.DisplayMember = "ObjectName";
+                        objectComboBox.ValueMember = "ObjectID";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при загрузке объектов: " + ex.Message);
+            }
+        }
+
+        private void btnObjectAdd_Click(object sender, EventArgs e)
+        {
+            ObjectNameAdress objectNameAdress = new ObjectNameAdress(connectionString, currentUserId);
+            if (objectNameAdress.ShowDialog() == DialogResult.OK)
+            {
+                LoadObjects(); // Обновляем список объектов
+                               // Можно добавить выбор нового объекта в комбобокс, если нужно
+                               // objectComboBox.SelectedItem = addObjectForm.ObjectName;
+            }
+        }
+
+        private async Task BlinkErrorIcon(PictureBox pictureBox)
+        {
+            for (int i = 0; i < 6; i++) // Мигаем 6 раз (3 секунды, если интервал 500мс)
+            {
+                pictureBox.Visible = !pictureBox.Visible; // Инвертируем видимость
+                await Task.Delay(500); // Пауза 500 миллисекунд (0.5 секунды)
+            }
+            pictureBox.Visible = false; // Убедимся, что стрелка снова скрыта после мигания (можно убрать, если хотите чтобы оставалась видимой)
+        }
+
+
+        private async void btnAddZayavka_Click(object sender, EventArgs e)
+        {
+            bool hasError = false;
+
+            // Проверка темы заявки
+            if (string.IsNullOrEmpty(themeTextBox.Text))
+            {
+                MessageBox.Show("Необходимо написать тему заявки."); // Оставляем MessageBox
+                themeErrorPictureBox.Visible = true;                // Показываем стрелку
+                await BlinkErrorIcon(themeErrorPictureBox);         // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return, чтобы показывалась только первая ошибка, как раньше
+            }
+            else { themeErrorPictureBox.Visible = false; }       // Скрываем стрелку, если ошибки нет
+
+            // Проверка сотрудника
+            if (employeesComboBox.SelectedValue == null)
+            {
+                MessageBox.Show("Необходимо выбрать сотрудника."); // Оставляем MessageBox
+                employeeErrorPictureBox.Visible = true;             // Показываем стрелку
+                await BlinkErrorIcon(employeeErrorPictureBox);      // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { employeeErrorPictureBox.Visible = false; }    // Скрываем стрелку, если ошибки нет
+
+            // Проверка объекта
+            if (objectComboBox.SelectedValue == null)
+            {
+                MessageBox.Show("Необходимо выбрать объект."); // Оставляем MessageBox
+                objectErrorPictureBox.Visible = true;            // Показываем стрелку
+                await BlinkErrorIcon(objectErrorPictureBox);     // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { objectErrorPictureBox.Visible = false; }   // Скрываем стрелку, если ошибки нет
+
+            // Проверка отдела
+            if (otdelComboBox.SelectedValue == null)
+            {
+                MessageBox.Show("Необходимо выбрать отдел."); // Оставляем MessageBox
+                otdelErrorPictureBox.Visible = true;             // Показываем стрелку
+                await BlinkErrorIcon(otdelErrorPictureBox);      // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { otdelErrorPictureBox.Visible = false; }    // Скрываем стрелку, если ошибки нет
+
+            // Проверка срочности
+            if (urgencyComboBox.SelectedItem == null)
+            {
+                MessageBox.Show("Необходимо выбрать срочность заявки."); // Оставляем MessageBox
+                urgencyErrorPictureBox.Visible = true;              // Показываем стрелку
+                await BlinkErrorIcon(urgencyErrorPictureBox);       // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { urgencyErrorPictureBox.Visible = false; }     // Скрываем стрелку, если ошибки нет
+
+            // Проверка дат
+            if (checkedListBoxDates1.Items.Count == 0)
+            {
+                MessageBox.Show("Необходимо выбрать хотя бы одну дату."); // Оставляем MessageBox
+                datesErrorPictureBox.Visible = true;                 // Показываем стрелку
+                await BlinkErrorIcon(datesErrorPictureBox);          // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { datesErrorPictureBox.Visible = false; }        // Скрываем стрелку, если ошибки нет
+
+            // Проверка чекбоксов Sensor или MPM
+            if (!checkBoxSensor.Checked && !checkBoxMPM.Checked)
+            {
+                MessageBox.Show("Необходимо поставить хотя бы одну галочку (Отправить письмо на Sensor или MPM)"); // Оставляем MessageBox
+                checkboxErrorPictureBox.Visible = true;              // Показываем стрелку
+                await BlinkErrorIcon(checkboxErrorPictureBox);       // Запускаем мигание стрелки
+                hasError = true;
+                return; // <- Важно оставить return
+            }
+            else { checkboxErrorPictureBox.Visible = false; }     // Скрываем стрелку, если ошибки нет
+
+            if (hasError)
+            {
+                return; // Выходим из метода, если есть хотя бы одна ошибка (хотя return уже есть в каждой проверке)
+            }
+
+            int userId = (int)employeesComboBox.SelectedValue;
+            int objectId = (int)objectComboBox.SelectedValue;
+            int otdelId = (int)otdelComboBox.SelectedValue;
+
+            string urgency = urgencyComboBox.SelectedItem.ToString();
+            string status = statusComboBox.SelectedItem.ToString();
+            string comment = commentTextBox.Text;
+            string theme = themeTextBox.Text;
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+
+                    // Проверяем, существует ли UserID в таблице Users
+                    string checkUserQuery = "SELECT COUNT(*) FROM Users WHERE UserID = @UserID";
+                    using (SqlCommand checkUserCommand = new SqlCommand(checkUserQuery, connection))
+                    {
+                        checkUserCommand.Parameters.AddWithValue("@UserID", userId);
+                        int userCount = (int)checkUserCommand.ExecuteScalar();
+
+                        if (userCount == 0)
+                        {
+                            MessageBox.Show($"Ошибка: Пользователь с ID {userId} не найден в таблице Users.");
+                            return; // Прерываем вставку, если UserID не существует
+                        }
+                    }
+
+                    string query;
+                    SqlCommand command;
+                    int newZayavkaId;
+
+                    List<DateTime> selectedDates = GetSelectedDates();
+                    string selectedDatesString = string.Join(",", selectedDates.Select(d => d.ToString("yyyy-MM-dd")));
+
+                    if (selectedZayavkaId.HasValue)
+                    {
+                        query = @"
+            UPDATE Zayavki
+            SET Theme = @Theme,
+                UserID = @UserID,
+                ObjectID = @ObjectID,
+                Status = @Status,
+                Urgency = @Urgency,
+                Comment = @Comment,
+                OtdelID = @OtdelID,
+                Dates = @Dates,
+                RecurrenceInterval = @RecurrenceInterval
+            WHERE ZayavkiID = @ZayavkiID";
+                        command = new SqlCommand(query, connection);
+                        command.Parameters.AddWithValue("@ZayavkiID", selectedZayavkaId.Value);
+                    }
+                    else
+                    {
+                        query = @"
+            INSERT INTO Zayavki (Theme, UserID, ObjectID, Status, Urgency, Comment, CreatedByUserID, OtdelID, Dates, RecurrenceInterval, DateCreatedZayavka)
+            VALUES (@Theme, @UserID, @ObjectID, @Status, @Urgency, @Comment, @CreatedByUserID, @OtdelID, @Dates, @RecurrenceInterval, GETDATE());
+            SELECT SCOPE_IDENTITY();";
+                        command = new SqlCommand(query, connection);
+                        command.Parameters.AddWithValue("@CreatedByUserID", currentUserId);
+                    }
+
+                    command.Parameters.AddWithValue("@Theme", theme);
+                    command.Parameters.AddWithValue("@UserID", userId);
+                    command.Parameters.AddWithValue("@ObjectID", objectId);
+                    command.Parameters.AddWithValue("@Status", status);
+                    command.Parameters.AddWithValue("@Urgency", urgency);
+                    command.Parameters.AddWithValue("@Comment", comment);
+                    command.Parameters.AddWithValue("@OtdelID", otdelId);
+                    command.Parameters.AddWithValue("@Dates", selectedDatesString);
+
+                    // Добавляем параметр RecurrenceInterval
+                    int recurrenceInterval = 0;
+                    if (recurringCheckBox.Checked && int.TryParse(recurrenceIntervalTextBox.Text, out recurrenceInterval))
+                    {
+                        // Значение уже установлено
+                    }
+                    else if (recurringCheckBox.Checked)
+                    {
+                        MessageBox.Show("Неверный формат интервала повторения. Введите число.");
+                        return;
+                    }
+                    command.Parameters.AddWithValue("@RecurrenceInterval", recurringCheckBox.Checked ? recurrenceInterval : (object)DBNull.Value);
+
+                    newZayavkaId = selectedZayavkaId.HasValue ? selectedZayavkaId.Value : Convert.ToInt32(command.ExecuteScalar());
+                    MessageBox.Show((selectedZayavkaId.HasValue ? "Заявка успешно обновлена." : "Заявка успешно добавлена. ID: " + newZayavkaId));
+
+                    // Добавляем запись в лог
+                    // Получаем имя пользователя, создавшего заявку
+                    string createdByUserFullName = GetUserFullName(currentUserId);
+                    // Получаем имя пользователя, для которого создана заявка
+                    string userFullName = GetUserFullName(userId);
+                    string logEntry = $"Пользователь {createdByUserFullName} создал заявку с ID {newZayavkaId} для пользователя {userFullName} в {DateTime.Now}";
+
+                    // Записываем лог в базу данных
+                    LogToDatabase(logEntry);
+
+                    // Получаем экземпляр LogForm (если он существует) или создаем новый
+                    LogForm logForm = Application.OpenForms.OfType<LogForm>().FirstOrDefault();
+                    if (logForm == null)
+                    {
+                        logForm = new LogForm(connectionString);
+                    }
+
+                    // Добавляем запись в лог
+                    logForm.AddLogEntry(logEntry);
+
+                    if (selectedFilesBytes.Count > 0)
+                    {
+                        foreach (int i in Enumerable.Range(0, selectedFilesBytes.Count))
+                        {
+                            string fileQuery = @"
+                        INSERT INTO ZayavkaFiles (ZayavkiID, FileData, FileName)
+                        VALUES (@ZayavkiID, @FileData, @FileName)";
+                            using (SqlCommand fileCommand = new SqlCommand(fileQuery, connection))
+                            {
+                                fileCommand.Parameters.AddWithValue("@ZayavkiID", newZayavkaId);
+                                fileCommand.Parameters.AddWithValue("@FileData", selectedFilesBytes[i]);
+                                fileCommand.Parameters.AddWithValue("@FileName", selectedFilesNames[i]);
+                                fileCommand.ExecuteNonQuery();
+                            }
+                        }
+                    }
+
+                    // Создание повторяющейся заявки, если выбрано
+                    if (recurringCheckBox.Checked)
+                    {
+                        // Запускаем таймер для создания повторяющихся заявок
+                        StartRecurringZayavkaTimer(newZayavkaId, recurrenceInterval);
+                    }
+
+                    ClearInputFields();
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
+                    UpdateTaskForm();
+
+                    // Отправка email после успешного создания/обновления заявки
+                    await SendZayavkaEmail(userId, currentUserId, objectId, otdelId, urgency, comment, newZayavkaId, theme);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при добавлении/обновлении заявки: " + ex.Message);
+            }
+        }
+
+        private void LogToDatabase(string logMessage)
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "INSERT INTO ApplicationLogs (LogMessage) VALUES (@LogMessage)";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@LogMessage", logMessage);
+                        command.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при записи лога в базу данных: " + ex.Message);
+            }
+        }
+
+
+        // Метод для получения имени пользователя по ID
+        private string GetUserFullName(int userId)
+        {
+            string fullName = "Неизвестный пользователь";
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT FullName FROM Users WHERE UserID = @UserID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserID", userId);
+                        object result = command.ExecuteScalar();
+                        if (result != null)
+                        {
+                            fullName = $"{result.ToString()} (ID: {userId})";
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении имени пользователя: " + ex.Message);
+            }
+            return fullName;
+        }
+
+
+
+
+        private void UpdateTaskForm()
+        {
+            // Предполагается, что у вас есть ссылка на экземпляр TaskForm
+            if (Application.OpenForms.OfType<TaskForm>().FirstOrDefault() is TaskForm taskForm)
+            {
+                taskForm.LoadApplications(); // Вызываем метод LoadApplications в TaskForm
+            }
+        }
+
+        private void ClearInputFields()
+        {
+            themeTextBox.Text = "";
+            employeesComboBox.SelectedIndex = -1;
+            objectComboBox.SelectedIndex = -1;
+            statusComboBox.SelectedIndex = -1;
+            urgencyComboBox.SelectedIndex = -1;
+            otdelComboBox.SelectedIndex = -1;
+            commentTextBox.Text = "";
+            selectedZayavkaId = null;
+            selectedFilesBytes.Clear();
+            selectedFilesNames.Clear();
+            fileTextBox.Text = "";
+            checkedListBoxDates1.Items.Clear(); // Очищаем список дат
+            recurringCheckBox.Checked = false;
+            recurrenceIntervalTextBox.Enabled = false;
+            recurrenceIntervalLabel.Enabled = false;
+        }
+
+        private void UpdateRecurrenceInterval(int zayavkaId, int recurrenceInterval, SqlConnection connection)
+        {
+            string updateQuery = "UPDATE Zayavki SET RecurrenceInterval = @RecurrenceInterval WHERE ZayavkiID = @ZayavkiID";
+            using (SqlCommand updateCommand = new SqlCommand(updateQuery, connection))
+            {
+                updateCommand.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                updateCommand.Parameters.AddWithValue("@RecurrenceInterval", recurrenceInterval);
+                updateCommand.ExecuteNonQuery();
+            }
+        }
+
+        private void StartRecurringZayavkaTimer(int originalZayavkaId, int recurrenceInterval)
+        {
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+            timer.Interval = recurrenceInterval * 24 * 60 * 60 * 1000; // Интервал в миллисекундах (recurrenceInterval - в днях)
+            timer.Tag = originalZayavkaId; // Сохраняем ID оригинальной заявки в Tag
+            timer.Tick += (sender, e) => RecurringZayavkaTimer_Tick(sender, e, originalZayavkaId);
+            timer.Start();
+
+            // Сохраняем таймер, чтобы он не был удален сборщиком мусора
+            timers.Add(timer);
+        }
+
+
+        private void RecurringZayavkaTimer_Tick(object sender, EventArgs e, int originalZayavkaId)
+        {
+            System.Windows.Forms.Timer timer = (System.Windows.Forms.Timer)sender;
+            timer.Stop(); // Останавливаем таймер, чтобы избежать параллельного выполнения
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    CreateRecurringZayavka(originalZayavkaId, connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при создании повторяющейся заявки: " + ex.Message);
+            }
+            finally
+            {
+                timer.Start(); // Запускаем таймер снова
+            }
+        }
+
+        private void CreateRecurringZayavka(int originalZayavkaId, SqlConnection connection)
+        {
+            try
+            {
+                // Получаем данные из оригинальной заявки
+                string selectQuery = @"
+            SELECT Theme, UserID, ObjectID, Status, Urgency, Comment, CreatedByUserID, OtdelID, Dates, RecurrenceInterval
+            FROM Zayavki
+            WHERE ZayavkiID = @OriginalZayavkaId";
+
+                using (SqlCommand selectCommand = new SqlCommand(selectQuery, connection))
+                {
+                    selectCommand.Parameters.AddWithValue("@OriginalZayavkaId", originalZayavkaId);
+
+                    using (SqlDataReader reader = selectCommand.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            string theme = reader["Theme"].ToString();
+                            int userId = (int)reader["UserID"];
+                            int objectId = (int)reader["ObjectID"];
+                            string status = reader["Status"].ToString();
+                            string urgency = reader["Urgency"].ToString();
+                            string comment = reader["Comment"].ToString();
+                            int createdByUserId = (int)reader["CreatedByUserID"];
+                            int otdelId = (int)reader["OtdelID"];
+                            string dates = reader["Dates"].ToString();
+                            int recurrenceInterval = reader.IsDBNull(reader.GetOrdinal("RecurrenceInterval")) ? 0 : (int)reader["RecurrenceInterval"];
+
+                            reader.Close(); // Закрываем reader
+
+                            // Проверяем, не является ли статус оригинальной заявки "Периодичность закончилась"
+                            if (status != "Периодичность закончилась")
+                            {
+                                // Создаем новую заявку
+                                string insertQuery = @"
+                            INSERT INTO Zayavki (Theme, UserID, ObjectID, Status, Urgency, Comment, CreatedByUserID, OtdelID, Dates, RecurrenceInterval)
+                            VALUES (@Theme, @UserID, @ObjectID, @Status, @Urgency, @Comment, @CreatedByUserID, @OtdelID, @Dates, @RecurrenceInterval);
+                            SELECT SCOPE_IDENTITY();";
+
+                                using (SqlCommand insertCommand = new SqlCommand(insertQuery, connection))
+                                {
+                                    insertCommand.Parameters.AddWithValue("@Theme", theme);
+                                    insertCommand.Parameters.AddWithValue("@UserID", userId);
+                                    insertCommand.Parameters.AddWithValue("@ObjectID", objectId);
+                                    insertCommand.Parameters.AddWithValue("@Status", status);
+                                    insertCommand.Parameters.AddWithValue("@Urgency", urgency);
+                                    insertCommand.Parameters.AddWithValue("@Comment", comment);
+                                    insertCommand.Parameters.AddWithValue("@CreatedByUserID", createdByUserId);
+                                    insertCommand.Parameters.AddWithValue("@OtdelID", otdelId);
+                                    insertCommand.Parameters.AddWithValue("@Dates", dates);
+                                    insertCommand.Parameters.AddWithValue("@RecurrenceInterval", recurrenceInterval);
+
+                                    int newZayavkaId = Convert.ToInt32(insertCommand.ExecuteScalar());
+
+                                    // Обновляем статус старой заявки
+                                    string updateQuery = "UPDATE Zayavki SET Status = 'Периодичность закончилась' WHERE ZayavkiID = @OriginalZayavkaId";
+                                    using (SqlCommand updateCommand = new SqlCommand(updateQuery, connection))
+                                    {
+                                        updateCommand.Parameters.AddWithValue("@OriginalZayavkaId", originalZayavkaId);
+                                        updateCommand.ExecuteNonQuery();
+                                    }
+
+                                    MessageBox.Show($"Создана новая заявка на основе заявки {originalZayavkaId}. Новая заявка ID: {newZayavkaId}");
+
+                                    // Запускаем таймер для новой заявки
+                                    if (recurrenceInterval > 0)
+                                    {
+                                        StartRecurringZayavkaTimer(newZayavkaId, recurrenceInterval);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при создании повторяющейся заявки: " + ex.Message);
+            }
+        }
+
+
+
+
+
+        private void btnSelectFile_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Multiselect = true;
+                openFileDialog.Filter = "All files (*.*)|*.*";
+                openFileDialog.Title = "Выберите файлы";
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    selectedFilesBytes.Clear();
+                    selectedFilesNames.Clear();
+                    foreach (string fileName in openFileDialog.FileNames)
+                    {
+                        try
+                        {
+                            selectedFilesBytes.Add(File.ReadAllBytes(fileName));
+                            selectedFilesNames.Add(Path.GetFileName(fileName));
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Ошибка при чтении файла {fileName}: " + ex.Message);
+                        }
+                    }
+                    fileTextBox.Text = string.Join(", ", selectedFilesNames);
+                }
+            }
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            AddEmployeeForm addEmployeeForm = new AddEmployeeForm();
+            addEmployeeForm.Show();
+        }
+
+        private void ZayavkaForm_Load_1(object sender, EventArgs e)
+        {
+
+        }
+
+        private static bool _isHelpMap2Open = false; // Статический флаг
+
+        private void btnHelp_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // Проверяем, открыта ли форма HelpMap2
+                if (_isHelpMap2Open)
+                {
+                    return; // Если открыта, ничего не делаем
+                }
+
+                // Создаем форму HelpMap2
+                HelpMap2 helpMapForm = new HelpMap2();
+
+                // Устанавливаем FormBorderStyle в None, чтобы она выглядела как часть основной формы
+                helpMapForm.FormBorderStyle = FormBorderStyle.None;
+
+                // Устанавливаем TopLevel в false, чтобы она была дочерней
+                helpMapForm.TopLevel = false;
+
+                // Создаем панель для прокрутки
+                Panel scrollPanel = new Panel();
+                scrollPanel.AutoScroll = true;
+                scrollPanel.Dock = DockStyle.Right;
+                scrollPanel.Width = helpMapForm.Width; // Устанавливаем ширину панели равной ширине формы HelpMap2
+
+                // Добавляем HelpMap2 на панель
+                scrollPanel.Controls.Add(helpMapForm);
+
+                // Устанавливаем DockStyle для HelpMap2, чтобы она заполняла панель
+                helpMapForm.Dock = DockStyle.Top; // Важно: DockStyle.Top, чтобы прокрутка работала
+
+                // Запоминаем текущие размеры основной формы
+                int originalWidth = this.Width;
+                int originalHeight = this.Height;
+
+                // Добавляем панель на основную форму
+                this.Controls.Add(scrollPanel);
+
+                // Отображаем HelpMap2
+                helpMapForm.Show();
+
+                // Перемещаем панель на передний план, чтобы она не перекрывалась другими элементами
+                scrollPanel.BringToFront();
+
+                // Расширяем основную форму, чтобы вместить панель
+                this.Width = originalWidth + scrollPanel.Width;
+                this.Height = Math.Max(originalHeight, helpMapForm.Height);
+
+                // Устанавливаем флаг, что форма открыта
+                _isHelpMap2Open = true;
+                // Обработчик события FormClosed для HelpMap2
+                helpMapForm.FormClosed += (s, args) =>
+                {
+                    // Возвращаем исходные размеры основной формы
+                    this.Width = originalWidth;
+                    this.Height = originalHeight;
+
+                    // Сбрасываем флаг, что форма закрыта
+                    _isHelpMap2Open = false;
+                };
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при открытии формы HelpMap2: " + ex.Message, "Ошибка");
+            }
+        }
+
+        private List<DateTime> GetSelectedDates()
+        {
+            List<DateTime> selectedDates = new List<DateTime>();
+            foreach (var item in checkedListBoxDates1.CheckedItems)
+            {
+                if (item is DateTime)
+                {
+                    selectedDates.Add((DateTime)item);
+                }
+            }
+            return selectedDates;
+        }
+
+        private void ObjectComboBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true; // Предотвращаем добавление Enter в текст ComboBox
+                FilterObjects();
+            }
+        }
+
+        private void FilterObjects()
+        {
+            string searchText = objectComboBox.Text.ToLower(); // Получаем текст поиска в нижнем регистре
+
+            if (string.IsNullOrEmpty(searchText))
+            {
+                // Если строка поиска пуста, возвращаем исходные данные
+                objectComboBox.DataSource = originalObjectsTable;
+            }
+            else
+            {
+                // Фильтруем данные
+                DataTable filteredObjectsTable = originalObjectsTable.Clone(); // Создаем копию структуры таблицы
+                foreach (DataRow row in originalObjectsTable.Rows)
+                {
+                    if (row["ObjectName"].ToString().ToLower().Contains(searchText))
+                    {
+                        filteredObjectsTable.ImportRow(row); // Копируем строку в отфильтрованную таблицу
+                    }
+                }
+                objectComboBox.DataSource = filteredObjectsTable; // Обновляем DataSource
+            }
+
+            // Выпадающий список
+            objectComboBox.DroppedDown = true;
+
+            // Передача фокуса на другой элемент управления и обратно
+            this.ActiveControl = themeTextBox; // Или любой другой элемент управления
+            this.ActiveControl = objectComboBox;
+        }
+
+        private void btnDates_Click(object sender, EventArgs e)
+        {
+            Choice choiceForm = new Choice();
+
+            if (choiceForm.ShowDialog() == DialogResult.OK)
+            {
+                if (choiceForm.UseRange)
+                {
+                    // Открываем DatesFormOne
+                    DatesFormOne datesFormOne = new DatesFormOne();
+                    if (datesFormOne.ShowDialog() == DialogResult.OK)
+                    {
+                        // Отображаем выбранные даты в startDateTextBox и endDateTextBox
+                        startDateTextBox.Text = datesFormOne.StartDate.ToShortDateString();
+                        endDateTextBox.Text = datesFormOne.EndDate.ToShortDateString();
+
+                        // Очищаем checkedListBoxDates1
+                        checkedListBoxDates1.Items.Clear();
+
+                        // Добавляем выбранные даты из DatesFormOne в checkedListBoxDates1
+                        foreach (DateTime date in datesFormOne.SelectedDates)
+                        {
+                            int index = checkedListBoxDates1.Items.Add(date);
+                            checkedListBoxDates1.SetItemChecked(index, true); // Автоматически отмечаем добавленные даты
+                        }
+                    }
+                }
+                else
+                {
+                    // Открываем DatesForm
+                    List<DateTime> existingDates = GetSelectedDates();
+                    DatesForm datesForm = new DatesForm(existingDates);
+
+                    if (datesForm.ShowDialog() == DialogResult.OK)
+                    {
+                        // Очищаем checkedListBoxDates1
+                        checkedListBoxDates1.Items.Clear();
+
+                        foreach (DateTime date in datesForm.SelectedDates)
+                        {
+                            int index = checkedListBoxDates1.Items.Add(date);
+                            checkedListBoxDates1.SetItemChecked(index, true); // Автоматически отмечаем добавленные даты
+                        }
+                    }
+                }
+            }
+        }
+
+        private void recurringCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            recurrenceIntervalTextBox.Enabled = recurringCheckBox.Checked;
+            recurrenceIntervalLabel.Enabled = recurringCheckBox.Checked;
+        }
+
+        private void CheckAndCreateRecurringZayavkiOnStartup()
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+
+                    string selectQuery = @"
+                SELECT ZayavkiID, RecurrenceInterval
+                FROM Zayavki
+                WHERE RecurrenceInterval > 0 AND Status != 'Периодичность закончилась'";
+
+                    using (SqlCommand selectCommand = new SqlCommand(selectQuery, connection))
+                    {
+                        using (SqlDataReader reader = selectCommand.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                int zayavkaId = (int)reader["ZayavkiID"];
+                                int recurrenceInterval = (int)reader["RecurrenceInterval"];
+                                StartRecurringZayavkaTimer(zayavkaId, recurrenceInterval);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при проверке периодических заявок при запуске: " + ex.Message);
+            }
+        }
+
+
+
+
+        private async Task SendZayavkaEmail(int userId, int currentUserId, int objectId, int otdelId, string urgency, string comment, int zayavkaId, string theme)
+        {
+            string fromEmail = "i@so1ta.ru";
+            string fromPassword = "oqhrbzdvcyzdycui";
+            bool sensorSent = false;
+            bool mpmSent = false;
+            bool sensor01Sent = false;
+            bool mpm01Sent = false;
+            bool sensorInfoSent = false;
+            bool mpmInfoSent = false;
+
+            try
+            {
+                List<string> toEmails = new List<string>(); // Используем List<string> для хранения email-адресов
+
+                // Определяем, какие чекбоксы выбраны и кому отправлять письмо
+                if (checkBoxSensor.Checked)
+                {
+                    string email = GetUserEmail(userId); // Email из Users
+                    if (!string.IsNullOrEmpty(email))
+                    {
+                        toEmails.Add(email);
+                        sensorSent = true;
+                    }
+                }
+                if (checkBoxMPM.Checked)
+                {
+                    string email = GetUserEmail1(userId); // Email1 из Users
+                    if (!string.IsNullOrEmpty(email))
+                    {
+                        toEmails.Add(email);
+                        mpmSent = true;
+                    }
+                }
+                if (checkBoxSensor01.Checked || checkBoxMpm01.Checked)
+                {
+                    // Получаем email-адреса из таблицы Users для UserID = 78
+                    string[] emails = GetUserEmailsFromUsers(78);
+                    if (checkBoxSensor01.Checked)
+                    {
+                        if (!string.IsNullOrEmpty(emails[0]))
+                        {
+                            toEmails.Add(emails[0]); // Email из Users для UserID = 78
+                            sensor01Sent = true;
+                        }
+                    }
+                    if (checkBoxMpm01.Checked)
+                    {
+                        if (!string.IsNullOrEmpty(emails[1]))
+                        {
+                            toEmails.Add(emails[1]); // Email1 из Users для UserID = 78
+                            mpm01Sent = true;
+                        }
+                    }
+                }
+                if (checkBoxInfoSensor.Checked || checkBoxInfoMpm.Checked)
+                {
+                    // Получаем email-адреса из таблицы Users для UserID = 78
+                    string[] emails1 = GetUserEmailsFromUsers1(78);
+                    if (checkBoxInfoSensor.Checked)
+                    {
+                        if (!string.IsNullOrEmpty(emails1[0]))
+                        {
+                            toEmails.Add(emails1[0]); // Email из Users для UserID = 78
+                            sensorInfoSent = true;
+                        }
+                    }
+                    if (checkBoxInfoMpm.Checked)
+                    {
+                        if (!string.IsNullOrEmpty(emails1[1]))
+                        {
+                            toEmails.Add(emails1[1]); // Email1 из Users для UserID = 78
+                            mpmInfoSent = true;
+                        }
+                    }
+                }
+
+                if (toEmails.Count == 0)
+                {
+                    MessageBox.Show("Необходимо выбрать хотя бы один из чекбоксов: Sensor, MPM, Sensor01 или MPM01.");
+                    return;
+                }
+
+                // Получаем данные для тела письма
+                string createdByUserName = GetUserName(currentUserId);
+                string objectName = GetObjectName(objectId);
+                string objectFullAddress = GetObjectFullAddress(objectId);
+                string otdelName = GetOtdelName(otdelId);
+                string employeeName = GetUserName(userId);
+                string zayavkaDates = GetZayavkaDates(zayavkaId);
+
+                // Получаем файлы из базы данных
+                List<Tuple<string, byte[]>> attachments = GetZayavkaAttachments(zayavkaId);
+
+                // Формируем тело письма
+                string body = "";
+                if (attachments.Count > 0)
+                {
+                    body = "Есть вложения!<br><br>";
+                }
+
+                body += $@"Вам поступила новая заявка!<br>
+От кого: {createdByUserName}<br>
+Даты: {zayavkaDates}<br>
+Срочность: {urgency}<br>
+Комментарий: {comment}<br><br><br>
+Кому: {employeeName}<br>
+Объект: {objectName}<br>
+Адрес объекта: {objectFullAddress}<br>
+Отдел: {otdelName}<br>
+ID заявки: {zayavkaId}";
+                var message = new MimeMessage();
+                message.From.Add(new MailboxAddress("MS-Plan", fromEmail));
+
+                // Добавляем всех получателей из списка
+                foreach (string toEmail in toEmails)
+                {
+                    message.To.Add(new MailboxAddress("Recipient", toEmail));
+                }
+
+                message.Subject = theme;
+
+                var builder = new BodyBuilder();
+                builder.HtmlBody = body;
+
+                // Добавляем файлы в письмо
+                foreach (var attachment in attachments)
+                {
+                    builder.Attachments.Add(attachment.Item1, attachment.Item2);
+                }
+
+                message.Body = builder.ToMessageBody();
+
+                using (var client = new MailKit.Net.Smtp.SmtpClient())
+                {
+                    await client.ConnectAsync("smtp.yandex.ru", 465, SecureSocketOptions.SslOnConnect);
+                    await client.AuthenticateAsync(fromEmail, fromPassword);
+                    await client.SendAsync(message);
+                    await client.DisconnectAsync(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при отправке email: " + ex.Message + "\n\n" + ex.StackTrace);
+            }
+            finally
+            {
+                UpdateZayavkaStatus(zayavkaId, sensorSent, mpmSent, sensor01Sent, mpm01Sent, sensorInfoSent, mpmInfoSent);
+            }
+        }
+
+
+        private string[] GetUserEmailsFromUsers(int userId)
+        {
+            string[] emails = new string[2];
+            //  Здесь можно указать конкретные email-адреса, которые всегда должны использоваться
+            emails[0] = "sensor.01@yandex.ru"; // Замени на нужный email для Sensor01
+            emails[1] = "mpm.mpm.01@yandex.ru"; // Замени на нужный email для MPM01
+            return emails;
+        }
+        private string[] GetUserEmailsFromUsers1(int userId)
+        {
+            string[] emails1 = new string[2];
+            //  Здесь можно указать конкретные email-адреса, которые всегда должны использоваться
+            emails1[0] = "info@pozbez.ru"; // Замени на нужный email для Sensor01
+            emails1[1] = "info@mospozhmontazh.ru"; // Замени на нужный email для MPM01
+            return emails1;
+        }
+
+
+
+        // Обновленная функция UpdateZayavkaStatus
+        private void UpdateZayavkaStatus(int zayavkaId, bool sensorSent, bool mpmSent, bool sensor01Sent, bool mpm01Sent, bool sensorInfoSent, bool mpmInfoSent)
+        {
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = @"
+                UPDATE Zayavki
+                SET SensorStatus = @SensorStatus,
+                    MPMStatus = @MPMStatus,
+                    Sensor01Status = @Sensor01Status,
+                    MPM01Status = @MPM01Status,
+                    SensorInfo = @SensorInfo,
+                    MpmInfo = @MpmInfo        
+                WHERE ZayavkiID = @ZayavkiID";
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                        command.Parameters.AddWithValue("@SensorStatus", sensorSent ? "OK" : (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@MPMStatus", mpmSent ? "OK" : (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@Sensor01Status", sensor01Sent ? "OK" : (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@MPM01Status", mpm01Sent ? "OK" : (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@SensorInfo", sensorInfoSent ? "OK" : (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@MpmInfo", mpmInfoSent ? "OK" : (object)DBNull.Value);
+
+                        command.ExecuteNonQuery();
+                    }
+                }
+
+                // Обновление DataGridView
+                if (_taskForm != null && !_taskForm.IsDisposed)
+                {
+                    if (_taskForm.InvokeRequired)
+                    {
+                        _taskForm.Invoke(new Action(() => _taskForm.LoadApplications()));
+                    }
+                    else
+                    {
+                        _taskForm.LoadApplications();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при обновлении статуса заявки в базе данных: " + ex.Message);
+            }
+        }
+
+        private string GetUserEmail(int userId)
+        {
+            string email = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT Email FROM Users WHERE UserID = @UserID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserID", userId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            email = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении email из базы данных: " + ex.Message);
+            }
+            return email;
+        }
+
+        private string GetUserEmail1(int userId)
+        {
+            string email = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT Email1 FROM Users WHERE UserID = @UserID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserID", userId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            email = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении email1 из базы данных: " + ex.Message);
+            }
+            return email;
+        }
+
+        private List<Tuple<string, byte[]>> GetZayavkaAttachments(int zayavkaId)
+        {
+            List<Tuple<string, byte[]>> attachments = new List<Tuple<string, byte[]>>();
+
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT FileName, FileData FROM ZayavkaFiles WHERE ZayavkiID = @ZayavkiID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string fileName = reader["FileName"].ToString();
+                                byte[] fileData = (byte[])reader["FileData"];
+                                attachments.Add(new Tuple<string, byte[]>(fileName, fileData));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении вложений из базы данных: " + ex.Message);
+            }
+
+            return attachments;
+        }
+
+
+
+
+        private string GetZayavkaDates(int zayavkaId)
+        {
+            string datesString = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT Dates FROM Zayavki WHERE ZayavkiID = @ZayavkiID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ZayavkiID", zayavkaId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            datesString = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении дат из базы данных: " + ex.Message);
+                return null; // Возвращаем null в случае ошибки
+            }
+
+            if (string.IsNullOrEmpty(datesString))
+            {
+                return "Даты не указаны"; // Или другое сообщение по умолчанию
+            }
+
+            // Разбор, сортировка и форматирование дат
+            List<DateTime> dates = datesString.Split(',')
+                .Select(d =>
+                {
+                    if (DateTime.TryParse(d, out DateTime parsedDate))
+                    {
+                        return parsedDate;
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Не удалось разобрать дату: {d}.  Проверьте формат даты в базе данных.");
+                        return DateTime.MinValue; // Или другое значение по умолчанию
+                    }
+                })
+                .Where(d => d != DateTime.MinValue) // Исключаем неверные даты
+                .OrderBy(d => d)
+                .ToList();
+
+            string formattedDates = string.Join(", ", dates.Select(d => d.ToString("dd.MM")));
+            string year = dates.Any() ? dates.First().Year.ToString() : DateTime.Now.Year.ToString();
+
+            return $"{formattedDates}<br>{year} год";
+        }
+
+
+
+        private string GetObjectFullAddress(int objectId)
+        {
+            string address = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT ObjectFullAdress FROM Objects WHERE ObjectID = @ObjectID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ObjectID", objectId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            address = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении адреса объекта из базы данных: " + ex.Message);
+            }
+            return address;
+        }
+
+
+
+
+        private string GetUserName(int userId)
+        {
+            string userName = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT FullName FROM Users WHERE UserID = @UserID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@UserID", userId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            userName = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении имени пользователя из базы данных: " + ex.Message);
+            }
+            return userName;
+        }
+
+        private string GetObjectName(int objectId)
+        {
+            string objectName = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT ObjectName FROM Objects WHERE ObjectID = @ObjectID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@ObjectID", objectId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            objectName = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении имени объекта из базы данных: " + ex.Message);
+            }
+            return objectName;
+        }
+
+        private string GetOtdelName(int otdelId)
+        {
+            string otdelName = null;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT OtdelName FROM Otdel WHERE OtdelID = @OtdelID";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@OtdelID", otdelId);
+                        object result = command.ExecuteScalar();
+                        if (result != null && result != DBNull.Value)
+                        {
+                            otdelName = result.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка при получении имени отдела из базы данных: " + ex.Message);
+            }
+            return otdelName;
+        }
+
+        private void checkBoxSensor_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
+    }
+}
