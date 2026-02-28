@@ -67,7 +67,7 @@
 }
 
 /* ========================================================================= */
-/* 3. ОСНОВНОЙ КОСМИЧЕСКИЙ ФОН */
+/* 3. ОСНОВНОЙ КОСМИЧЕСКИЙ ФОН (Исправленный рандом) */
 /* ========================================================================= */
 html {
     height: 100%;
@@ -84,6 +84,7 @@ html::before {
     width: 200%; height: 200%;
     z-index: -2;
     
+    /* Глубокие туманности (без изменений, они и так плавные) */
     background: 
         radial-gradient(circle at 50% 50%, var(--cosmic-accent) 0%, transparent 45%),
         radial-gradient(ellipse at 70% 20%, var(--cosmic-purple) 0%, transparent 50%),
@@ -102,7 +103,12 @@ html::before {
         deep-breath 15s ease-in-out infinite;
 }
 
-/* Слой звездной пыли */
+/* 
+   СЛОЙ ЗВЕЗД (Полный хаос и рандом)
+   Мы создаем 4 "облака" звезд разного размера и яркости.
+   Каждая звезда прописана вручную со случайными координатами (%, %),
+   что разрушает эффект сетки.
+*/
 html::after {
     content: '';
     position: fixed;
@@ -110,13 +116,50 @@ html::after {
     width: 100%; height: 100%;
     z-index: -1;
     pointer-events: none;
-    
-    background-image: 
-        radial-gradient(circle, rgba(255,255,255,0.2) 1px, transparent 1px),
-        radial-gradient(circle, rgba(0, 212, 255, 0.3) 1px, transparent 1px);
-    background-size: 50px 50px, 80px 80px;
-    
-    animation: twinkle 20s linear infinite;
+
+    /* 
+       МЫ УБИРАЕМ background-size и background-repeat!
+       Теперь это не паттерн, а список конкретных точек.
+    */
+    background:
+        /* 1. Мелкие тусклые звезды (фоновая пыль) */
+        radial-gradient(1px 1px at 10% 10%, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 20% 40%, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 50% 80%, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 70% 20%, rgba(255,255,255,0.2), transparent),
+        radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 15% 70%, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 35% 30%, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 85% 90%, rgba(255,255,255,0.2), transparent),
+
+        /* 2. Средние яркие звезды (разбросаны хаотично) */
+        radial-gradient(1.5px 1.5px at 25% 15%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 65% 45%, rgba(255,255,255,0.8), transparent),
+        radial-gradient(1.5px 1.5px at 80% 10%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 5% 50%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 40% 60%, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 95% 30%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 12% 85%, rgba(255,255,255,0.8), transparent),
+        radial-gradient(1.5px 1.5px at 55% 5%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 33% 95%, rgba(255,255,255,0.6), transparent),
+
+        /* 3. Крупные звезды (редкие, для акцента) */
+        radial-gradient(2px 2px at 90% 85%, rgba(255,255,255,0.9), transparent),
+        radial-gradient(2px 2px at 10% 30%, rgba(255,255,255,0.9), transparent),
+        radial-gradient(2px 2px at 50% 50%, rgba(255,255,255,0.8), transparent),
+        radial-gradient(2px 2px at 75% 70%, rgba(255,255,255,0.9), transparent),
+        
+        /* 4. Цветные "космические" искры (голубые и фиолетовые) */
+        radial-gradient(2px 2px at 20% 80%, var(--cosmic-accent), transparent),
+        radial-gradient(2px 2px at 60% 10%, var(--cosmic-accent-secondary), transparent),
+        radial-gradient(1.5px 1.5px at 40% 40%, var(--cosmic-accent), transparent);
+
+    /* 
+       Анимация "twinkle" теперь работает как глобальное мерцание,
+       потому что отдельные звезды двигаться не могут (они часть одной картинки).
+       Но так как их много и они разноцветные, это выглядит как живое небо.
+    */
+    animation: twinkle 10s ease-in-out infinite alternate;
 }
 
 /* ========================================================================= */
