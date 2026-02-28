@@ -1,161 +1,224 @@
 /**
- * @name Blur
- * @version 2.0.0
- * @author Solta & jAba65 (Optimized)
- * @description Deep Space Cosmic Theme with smooth liquid transitions
+ * @name Cosmic Liquid Glass
+ * @version 2.5.0
+ * @author Solta & jAba65
+ * @description Deep space theme with smooth liquid transitions, glassmorphism, and glow effects
  * @source https:https://github.com/So1ta/So1ta.github.io/tree/main/discord-themes
 */
 
 @import url("https://jAba65.github.io/Discord%20Theme/jAba.css");
 
 /* ========================================================================= */
-/* 1. НОВЫЕ ГЛУБОКИЕ АНИМАЦИИ */
+/* 1. НАСТРОЙКИ ТЕМЫ (Переменные) */
+/* ========================================================================= */
+:root {
+    /* -- ГЛАВНЫЕ ЦВЕТА -- */
+    --cosmic-void: #02000a;         /* Базовый черный */
+    --cosmic-deep-blue: #0f0f3d;    /* Глубокий синий */
+    --cosmic-nebula-blue: #1a1a5e;  /* Туманность синяя */
+    --cosmic-purple: #3d0052;       /* Космический фиолетовый */
+    --cosmic-magenta: #5a0048;      /* Маджента */
+    --cosmic-accent: #00d4ff;       /* Яркий акцент (голубой) для свечения */
+    --cosmic-accent-secondary: #ff00ff; /* Вторичный акцент (розовый) */
+
+    /* -- ЭФФЕКТЫ -- */
+    --blur-bg: 100px;               /* Сила размытия фона */
+    --glass-blur: 20px;             /* Сила размытия стеклянных панелей */
+    --glass-opacity: 0.45;          /* Прозрачность панелей (0-1) */
+    --glow-intensity: 15px;         /* Сила свечения кнопок */
+}
+
+/* ========================================================================= */
+/* 2. АНИМАЦИИ */
 /* ========================================================================= */
 
-/* 
-   ГЛАВНОЕ ИЗМЕНЕНИЕ: Мы убираем hue-rotate с "короткими путями".
-   Теперь каждый слой градиента движется плавно и линейно.
-   Слой 1 (Синий -> Фиолетовый -> Синий) - самая медленная, глубокая база
-*/
+/* Плавное движение слоев фона (Layer 1 - Медленный) */
 @keyframes drift-layer-1 {
     0%   { background-position: 0% 50%; }
     50%  { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
 }
 
-/* 
-   Слой 2 (Бирюзовый -> Розовый -> Бирюзовый) - средняя скорость
-   Движется в другую сторону для создания объема
-*/
+/* Плавное движение слоев фона (Layer 2 - Быстрый, встречный) */
 @keyframes drift-layer-2 {
     0%   { background-position: 100% 0%; }
     50%  { background-position: 0% 100%; }
     100% { background-position: 100% 0%; }
 }
 
-/* 
-   Слой 3 (Яркие вспышки) - быстрый, создает мерцание и "жидкость"
-*/
-@keyframes drift-layer-3 {
-    0%   { background-position: 0% 0%; opacity: 0.4; }
-    50%  { opacity: 0.7; }
-    100% { background-position: 100% 100%; opacity: 0.4; }
+/* Мерцание звезд */
+@keyframes twinkle {
+    0% { opacity: 0.4; }
+    50% { opacity: 1; }
+    100% { opacity: 0.4; }
 }
 
-/* Медленная пульсация яркости для глубины */
+/* Пульсация яркости фона ("Дыхание") */
 @keyframes deep-breath {
     0%, 100% { filter: brightness(0.6) saturate(1.2); }
-    50%      { filter: brightness(0.75) saturate(1.5); }
+    50%      { filter: brightness(0.8) saturate(1.5); }
+}
+
+/* Свечение уведомлений */
+@keyframes pulse-glow {
+    0% { box-shadow: 0 0 5px var(--cosmic-accent); }
+    50% { box-shadow: 0 0 20px var(--cosmic-accent); }
+    100% { box-shadow: 0 0 5px var(--cosmic-accent); }
 }
 
 /* ========================================================================= */
-/* 2. ОБНОВЛЕННЫЕ ПЕРЕМЕННЫЕ */
-/* ========================================================================= */
-:root {
-    --blur-bg: 100px; /* Увеличил блюр для большей "жидкости" и мягкости */
-    --brightness-bg: 0.6;
-
-    /* Новая палитра: глубокая и насыщенная */
-    --cosmic-void: #02000a;
-    --cosmic-deep-blue: #0f0f3d;
-    --cosmic-nebula-blue: #1a1a5e;
-    --cosmic-purple: #3d0052;
-    --cosmic-magenta: #5a0048;
-    --cosmic-accent: #00d4ff; /* Яркий акцент для бликов */
-}
-
-/* ========================================================================= */
-/* 3. ПЕРЕРАБОТАННЫЙ ФОН (Многослойная жижа) */
+/* 3. ОСНОВНОЙ КОСМИЧЕСКИЙ ФОН */
 /* ========================================================================= */
 html {
     height: 100%;
     margin: 0;
     background-color: var(--cosmic-void);
+    overflow: hidden;
 }
 
+/* Главный слой туманностей */
 html::before {
     content: '';
     position: fixed;
-    top: 0; left: 0;
-    width: 200%; /* Делаем фон шире экрана для плавного движения без скачков */
-    height: 200%;
-    top: -50%;   /* Центрируем увеличенный фон */
-    left: -50%;
-    z-index: -1;
-
-    /* 
-       СЛОЖНАЯ КОМПОЗИЦИЯ: Несколько слоев радиальных градиентов.
-       Каждый слой имеет свой размер, позицию и цвет.
-       Вместе они создают эффект переливающейся жидкости.
-    */
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    z-index: -2;
+    
     background: 
-        /* Слой 3: Яркие акцентные "блики" (самый верхний, легкий) */
-        radial-gradient(circle at 50% 50%, var(--cosmic-accent) 0%, transparent 40%),
-        
-        /* Слой 2: Основные туманности (Фиолетово-Синие) */
+        radial-gradient(circle at 50% 50%, var(--cosmic-accent) 0%, transparent 45%),
         radial-gradient(ellipse at 70% 20%, var(--cosmic-purple) 0%, transparent 50%),
         radial-gradient(ellipse at 20% 80%, var(--cosmic-magenta) 0%, transparent 55%),
-        
-        /* Слой 1: Глубокая база (Темно-синяя) */
         radial-gradient(ellipse at 30% 30%, var(--cosmic-nebula-blue) 0%, transparent 60%),
         radial-gradient(ellipse at 80% 70%, var(--cosmic-deep-blue) 0%, transparent 70%),
-        
-        /* Базовый цвет (Космическая пустота) */
         radial-gradient(circle, var(--cosmic-void) 100%, var(--cosmic-void) 100%);
 
-    /* Размеры для каждого слоя разные, чтобы они "скользили" друг по другу */
-    background-size: 
-        60% 60%,  /* Блики - маленькие */
-        120% 120%, /* Туманности - большие */
-        100% 100%,
-        150% 150%, /* База - огромная */
-        180% 180%,
-        100% 100%;
-        
-    background-position: 
-        0% 0%, 
-        0% 0%, 
-        0% 0%, 
-        0% 0%, 
-        0% 0%, 
-        0% 0%;
-    background-repeat: no-repeat;
+    background-size: 60% 60%, 120% 120%, 100% 100%, 150% 150%, 180% 180%, 100% 100%;
     background-attachment: fixed;
-
-    /* ФИЛЬТРЫ: Блюр и контраст для "стеклянного" эффекта */
-    filter: blur(var(--blur-bg)) brightness(var(--brightness-bg));
     
-    /* 
-       АНИМАЦИЯ: Запускаем 3 движения параллельно.
-       1. Основной дрейф (медленный) - 60s
-       2. Встречное движение (средний) - 45s
-       3. Мерцание бликов (быстрый) - 20s
-       Это создает сложный, неповторяющийся паттерн.
-    */
+    filter: blur(var(--blur-bg)) brightness(0.6);
     animation: 
         drift-layer-1 60s linear infinite,
         drift-layer-2 45s linear infinite reverse,
         deep-breath 15s ease-in-out infinite;
 }
 
-/* ========================================================================= */
-/* 4. ДОПОЛНИТЕЛЬНЫЕ ЭФФЕКТЫ (Свечение интерфейса) */
-/* ========================================================================= */
-
-/* Улучшаем читаемость текста на живом фоне */
-.theme-dark .bg-1QIAay,
-.theme-dark .container-ZMc96U,
-.theme-dark .form-3gdPxP,
-.theme-dark .sidebar-2K8pFh {
-    background-color: rgba(0, 0, 0, 0.6) !important;
-    backdrop-filter: blur(2px); /* Легкое размытие фона панелей */
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5); /* Глубина панелей */
+/* Слой звездной пыли */
+html::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: -1;
+    pointer-events: none;
+    
+    background-image: 
+        radial-gradient(circle, rgba(255,255,255,0.2) 1px, transparent 1px),
+        radial-gradient(circle, rgba(0, 212, 255, 0.3) 1px, transparent 1px);
+    background-size: 50px 50px, 80px 80px;
+    
+    animation: twinkle 20s linear infinite;
 }
 
-/* Убираем лишние шумы и артефакты */
+/* ========================================================================= */
+/* 4. ЭФФЕКТ СТЕКЛА (GLASSMORPHISM) */
+/* ========================================================================= */
+
+/* Основные панели интерфейса */
+.theme-dark .layers-OrUESM,
+.theme-dark .sidebar-2K8pFh,
+.theme-dark .chat-2ZfjoI,
+.theme-dark .members-3WRCrW,
+.theme-dark .container-ZMc96U,
+.theme-dark .form-3gdPxP,
+.theme-dark .bg-1QIAay {
+    background-color: rgba(0, 0, 0, var(--glass-opacity)) !important;
+    backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    margin: 8px !important;
+}
+
+/* Убираем конфликты с внутренними элементами */
+.theme-dark .scroller-2FKFPG,
+.theme-dark .list-2uUYGC,
+.theme-dark .messagesWrapper-RpOMA3 {
+    background: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+}
+
+/* ========================================================================= */
+/* 5. СВЕЧЕНИЕ И ИНТЕРАКТИВНОСТЬ (GLOW & INTERACTIVE) */
+/* ========================================================================= */
+
+/* Свечение кнопок при наведении */
+.button-12SeJq:hover,
+.lookFilled-yCfaCM.colorBrand-I6CyqQ:hover {
+    box-shadow: 0 0 var(--glow-intensity) var(--cosmic-accent), 0 0 30px rgba(0, 212, 255, 0.3) !important;
+    transition: box-shadow 0.3s ease-in-out !important;
+}
+
+/* Эффект для поля ввода сообщения */
+.scrollableContainer-15eg7h {
+    box-shadow: inset 0 0 15px rgba(0, 212, 255, 0.1) !important;
+    transition: box-shadow 0.3s ease !important;
+    border-radius: 8px !important;
+}
+
+.scrollableContainer-15eg7h:focus-within {
+    box-shadow: inset 0 0 25px rgba(0, 212, 255, 0.2), 0 0 10px rgba(0, 212, 255, 0.15) !important;
+}
+
+/* Аватары пользователей */
+.avatar-2e8lTP {
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2) !important;
+    transition: box-shadow 0.3s ease !important;
+}
+.avatar-2e8lTP:hover {
+    box-shadow: 0 0 0 5px rgba(0, 212, 255, 0.4) !important;
+}
+
+/* Сообщения в чате */
+.message-2CShn3 {
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    border-radius: 8px !important;
+}
+.message-2CShn3:hover {
+    transform: translateX(4px) !important;
+    box-shadow: -4px 0 15px rgba(0, 212, 255, 0.1) !important;
+    background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Пульсация непрочитанных сообщений */
+.unread-36eUEk {
+    animation: pulse-glow 2s infinite;
+}
+
+/* ========================================================================= */
+/* 6. ПРОЧИЕ УЛУЧШЕНИЯ */
+/* ========================================================================= */
+
+/* Убираем лишние шумы */
 body {
     background: none !important;
-    overflow: hidden;
-    height: 100%;
-    margin: 0;
+}
+
+/* Скроллбар в стиле темы */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 212, 255, 0.3);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 212, 255, 0.6);
 }
